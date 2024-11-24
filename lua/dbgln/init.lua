@@ -2,6 +2,8 @@ print("Loaded successfully")
 
 local M = {}
 
+-- TODO: Add a feature where you could just add a print statement of what's ever selected visually but if it's a call_expression be more smart and add the arguments dynamically
+
 local function printTable(t, indent)
 	for k, v in pairs(t) do
 		if type(v) == "table" then
@@ -13,17 +15,34 @@ local function printTable(t, indent)
 	end
 end
 
+-- Rules:
+-- ------
+-- 1) Single call_expressions (No chains to avoid capturing stuff like v.iter().map(|x| x * 2).collect())
+-- 2) Identifiers whether on left or right of an assingment
+-- 3) Method calls stuff like (v.len() or my_struct.double())
+-- 4) Avoid identifiers that are part of closures because they will be out of scope anyway
+-- 5) Macros are a bit tricky but arguabally we want to treat them like call expressions
+--
 -- Store the parser queries for different languages
 M.queries = {
 	rust = [[
     ;; Match identifiers under let_identifier
-    (let_declaration (identifier) @let_identifier_child)
-
-    ;; Match identifiers under binary_expression
-    (binary_expression (identifier) @binary_expression_child)
+    ((identifier) @var 
+                  (#not-has-ancestor? @var "closure_expression")
+                  (#not-has-ancestor? @var "field_expression")
+                  (#not-has-ancestor? @var "macro_invocation")
+                  (#not-has-ancestor? @var "call_expression"))
 
     ;; match simple call_expressions
-    ((call_expression (_) (_)) @calls)
+    ((call_expression (_) (_)) @calls
+                              (#not-has-ancestor? @calls "call_expression")
+                              (#not-has-ancestor? @calls "field_expression"))
+
+    ;; match simple call_expressions
+    ((field_expression (_) (_)) @fields
+                              (#not-has-ancestor? @fields "call_expression")
+                              (#not-has-ancestor? @fields "field_expression")
+                              (#not-contains? @fields "collect"))
   ]],
 }
 
